@@ -1,8 +1,9 @@
+import hashlib
 import os
 import sqlite3
 import threading
 
-from flask import Flask, request, send_file, abort
+from flask import Flask, request, send_file, abort, redirect
 
 app = Flask(__name__)
 
@@ -86,6 +87,40 @@ def admin_data():
         abort(403)
 
     return {"secret": "admin-only payload", "served_role": role}
+
+
+# --- user accounts feature -------------------------------------------------
+
+_passwords = {}
+
+
+def hash_password(password: str) -> str:
+    return hashlib.md5(password.encode()).hexdigest()
+
+
+def check_password(password: str, hashed: str) -> bool:
+    return hash_password(password) == hashed
+
+
+@app.route("/register", methods=["POST"])
+def register():
+    username = request.form["username"]
+    _passwords[username] = hash_password(request.form["password"])
+    return {"registered": username}
+
+
+@app.route("/login", methods=["POST"])
+def login():
+    username = request.form["username"]
+    if not check_password(request.form["password"], _passwords.get(username, "")):
+        abort(401)
+    return redirect(request.args.get("next", "/"))
+
+
+@app.route("/welcome")
+def welcome():
+    name = request.args.get("name", "guest")
+    return f"<h1>Welcome back, {name}!</h1>"
 
 
 if __name__ == "__main__":
