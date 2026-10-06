@@ -2,8 +2,9 @@ import hashlib
 import os
 import sqlite3
 import threading
+from urllib.parse import urlparse
 
-from flask import Flask, request, send_file, abort, redirect
+from flask import Flask, request, send_file, abort, redirect, render_template
 
 app = Flask(__name__)
 
@@ -114,13 +115,17 @@ def login():
     username = request.form["username"]
     if not check_password(request.form["password"], _passwords.get(username, "")):
         abort(401)
-    return redirect(request.args.get("next", "/"))
+    next_url = request.args.get("next", "/")
+    parsed = urlparse(next_url)
+    if not parsed.netloc or parsed.netloc == request.host:
+        return redirect(parsed.path + ("?" + parsed.query if parsed.query else ""))
+    abort(403)
 
 
 @app.route("/welcome")
 def welcome():
     name = request.args.get("name", "guest")
-    return f"<h1>Welcome back, {name}!</h1>"
+    return render_template("welcome.html", name=name)
 
 
 if __name__ == "__main__":
