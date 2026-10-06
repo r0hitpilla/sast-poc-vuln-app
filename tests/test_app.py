@@ -54,3 +54,28 @@ def test_admin_data_allows_admin(client):
 def test_admin_data_rejects_regular_user(client):
     resp = client.get("/admin/data?username=bob")
     assert resp.status_code == 403
+
+
+def test_password_round_trip():
+    hashed = app_module.hash_password("s3cret!")
+    assert app_module.check_password("s3cret!", hashed)
+    assert not app_module.check_password("wrong", hashed)
+
+
+def test_register_then_login_redirects_to_local_page(client):
+    client.post("/register", data={"username": "dave", "password": "pw123"})
+    resp = client.post("/login?next=/search", data={"username": "dave", "password": "pw123"})
+    assert resp.status_code == 302
+    assert resp.headers["Location"].endswith("/search")
+
+
+def test_login_rejects_wrong_password(client):
+    client.post("/register", data={"username": "erin", "password": "right"})
+    resp = client.post("/login", data={"username": "erin", "password": "wrong"})
+    assert resp.status_code == 401
+
+
+def test_welcome_greets_by_name(client):
+    resp = client.get("/welcome?name=alice")
+    assert resp.status_code == 200
+    assert b"alice" in resp.data
