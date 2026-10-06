@@ -2,6 +2,7 @@ import hashlib
 import os
 import sqlite3
 import threading
+from urllib.parse import urlparse
 
 from flask import Flask, request, send_file, abort, redirect
 
@@ -114,7 +115,11 @@ def login():
     username = request.form["username"]
     if not check_password(request.form["password"], _passwords.get(username, "")):
         abort(401)
-    return redirect(request.args.get("next", "/"))
+    next_url = request.args.get("next", "/")
+    parsed = urlparse(next_url)
+    if not parsed.netloc or parsed.netloc == "127.0.0.1":
+        return redirect(parsed.path or "/")
+    abort(403)
 
 
 @app.route("/welcome")
