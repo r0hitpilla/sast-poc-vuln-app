@@ -41,17 +41,20 @@ def search_users():
     """SQL injection: username is string-interpolated directly into the query."""
     username = request.args.get("username", "")
     conn = get_db()
-    query = f"SELECT id, username, role FROM users WHERE username = '{username}'"
-    rows = conn.execute(query).fetchall()
+    rows = conn.execute(
+        "SELECT id, username, role FROM users WHERE username = ?", 
+        (username,)
+    ).fetchall()
     conn.close()
     return {"results": [dict(r) for r in rows]}
 
 
+from flask import Flask, request, send_from_directory
+
 @app.route("/files/<path:filename>")
 def get_file(filename):
-    """Path traversal: filename is joined into a path without containment checks."""
-    full_path = os.path.join(UPLOADS_DIR, filename)
-    return send_file(full_path)
+    """Serve file securely from uploads directory."""
+    return send_from_directory(UPLOADS_DIR, filename)
 
 
 @app.route("/admin/data")
@@ -88,4 +91,4 @@ def admin_data():
 if __name__ == "__main__":
     os.makedirs(UPLOADS_DIR, exist_ok=True)
     init_db()
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    app.run(host="127.0.0.1", port=5000, debug=False)
