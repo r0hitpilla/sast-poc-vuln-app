@@ -1,9 +1,11 @@
 import hashlib
+import hmac
 import os
 import sqlite3
 import threading
+from urllib.parse import urlparse
 
-from flask import Flask, request, send_file, abort, redirect
+from flask import Flask, request, send_file, abort, redirect, render_template
 
 app = Flask(__name__)
 
@@ -94,12 +96,42 @@ def admin_data():
 _passwords = {}
 
 
+def _hash_password_internal(password: str, salt: bytes) -> tuple[bytes, bytes]:
+    """Hash password using scrypt. Returns (salt, digest)."""
+    digest = hashlib.scrypt(
+        password.encode(),
+        salt=salt,
+        n=2**14,
+        r=8,
+        p=1,
+        dklen=32
+    )
+    return salt, digest
+
+
 def hash_password(password: str) -> str:
-    return hashlib.md5(password.encode()).hexdigest()
+    """Hash a password and store the result in format 'scrypt${salt_hex}${digest_hex}'."""
+    salt = os.urandom(16)
+    _, digest = _hash_password_internal(password, salt)
+    return f"scrypt${salt.hex()}${digest.hex()}"
 
 
 def check_password(password: str, hashed: str) -> bool:
-    return hash_password(password) == hashed
+    """Verify a password against a stored hash."""
+    try:
+        parts = hashed.split("$")
+        if len(parts) != 3 or parts[0] != "scrypt":
+            return False
+        salt_hex, digest_hex = parts[1], parts[2]
+        salt = bytes.fromhex(salt_hex)
+        stored_digest = bytes.fromhex(digest_hex)
+
+        _, computed_digest = _hash_password_internal(password, salt)
+        
+        # Use constant-time comparison to prevent timing attacks
+        return hmac.compare_digest(computed_digest, stored_digest)
+    except (ValueError, IndexError):
+        return False
 
 
 @app.route("/register", methods=["POST"])
@@ -114,13 +146,17 @@ def login():
     username = request.form["username"]
     if not check_password(request.form["password"], _passwords.get(username, "")):
         abort(401)
-    return redirect(request.args.get("next", "/"))
+    next_url = request.args.get("next", "/")
+    parsed = urlparse(next_url)
+    if not parsed.netloc or parsed.netloc == request.host:
+        return redirect(parsed.path + ("?" + parsed.query if parsed.query else ""))
+    abort(403)
 
 
 @app.route("/welcome")
 def welcome():
     name = request.args.get("name", "guest")
-    return f"<h1>Welcome back, {name}!</h1>"
+    return render_template("welcome.html", name=name)
 
 
 if __name__ == "__main__":
