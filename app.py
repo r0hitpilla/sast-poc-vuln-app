@@ -7,7 +7,10 @@ from urllib.parse import urlparse
 
 from flask import Flask, request, send_file, abort, redirect, render_template
 
+from orders import init_orders_db, orders
+
 app = Flask(__name__)
+app.register_blueprint(orders)
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "users.db")
 UPLOADS_DIR = os.path.join(os.path.dirname(__file__), "uploads")
@@ -162,4 +165,5 @@ def welcome():
 if __name__ == "__main__":
     os.makedirs(UPLOADS_DIR, exist_ok=True)
     init_db()
+    init_orders_db()
     app.run(host="127.0.0.1", port=5000, debug=False)

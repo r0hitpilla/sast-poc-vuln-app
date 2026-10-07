@@ -1,1 +1,5 @@
 Flask>=3.1.3
+PyYAML>=6.0.1
+requests==2.31.0
+# idna comes in through requests; kept past its published advisories
+idna>=3.15
