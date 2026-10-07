@@ -1,9 +1,11 @@
 import hashlib
+import hmac
 import os
 import sqlite3
 import threading
+from urllib.parse import urlparse
 
-from flask import Flask, request, send_file, abort, redirect
+from flask import Flask, request, send_file, abort, redirect, render_template
 
 app = Flask(__name__)
 
@@ -95,11 +97,36 @@ _passwords = {}
 
 
 def hash_password(password: str) -> str:
-    return hashlib.md5(password.encode()).hexdigest()
+    salt = os.urandom(16)
+    digest = hashlib.scrypt(
+        password.encode(),
+        salt=salt,
+        n=2**14,
+        r=8,
+        p=1,
+        dklen=32
+    )
+    return f"scrypt${salt.hex()}${digest.hex()}"
 
 
 def check_password(password: str, hashed: str) -> bool:
-    return hash_password(password) == hashed
+    try:
+        algorithm, salt_hex, digest_hex = hashed.split("$")
+        if algorithm != "scrypt":
+            return False
+        salt = bytes.fromhex(salt_hex)
+        stored_digest = bytes.fromhex(digest_hex)
+        computed_digest = hashlib.scrypt(
+            password.encode(),
+            salt=salt,
+            n=2**14,
+            r=8,
+            p=1,
+            dklen=32
+        )
+        return hmac.compare_digest(stored_digest, computed_digest)
+    except Exception:
+        return False
 
 
 @app.route("/register", methods=["POST"])
@@ -114,13 +141,17 @@ def login():
     username = request.form["username"]
     if not check_password(request.form["password"], _passwords.get(username, "")):
         abort(401)
-    return redirect(request.args.get("next", "/"))
+    next_url = request.args.get("next", "/")
+    parsed = urlparse(next_url)
+    if not parsed.netloc or parsed.netloc == request.host:
+        return redirect(parsed.path + ("?" + parsed.query if parsed.query else ""))
+    return redirect("/")
 
 
 @app.route("/welcome")
 def welcome():
     name = request.args.get("name", "guest")
-    return f"<h1>Welcome back, {name}!</h1>"
+    return render_template("welcome.html", name=name)
 
 
 if __name__ == "__main__":
