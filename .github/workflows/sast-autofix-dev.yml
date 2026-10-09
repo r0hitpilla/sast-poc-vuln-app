@@ -67,6 +67,8 @@ jobs:
           if [[ "$GITHUB_REF_NAME" == *-fix ]]; then mode="--check-only"; fi
           # The gate (which severities block, how many may remain) is read from the
           # dashboard policy for this branch. Fail closed: no policy means strict.
+          # A fix PR's head commit is pushed by the bot, which starts no workflow, so
+          # its required check is posted as a commit status under the gate names.
           gate=()
           if [ -n "$BLOCK_SEVERITIES" ]; then gate=(--block-severities "$BLOCK_SEVERITIES"); fi
           "$SAST_AUTOFIX_HOME/venv/bin/python" "$SAST_AUTOFIX_HOME/cli.py" \
@@ -75,6 +77,8 @@ jobs:
             --base-branch "$GITHUB_REF_NAME" \
             --report-dir "$RUNNER_TEMP/sast-autofix" \
             --fail-on-findings \
+            --status-context "SAST gate (dev)" \
+            --status-context "SAST gate (feature)" \
             "${gate[@]}" \
             $mode
 
