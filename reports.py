@@ -5,6 +5,7 @@ Deliberately imperfect (Medium and Low findings only, see the commit message).
 
 import hashlib
 import os
+import sqlite3
 
 import requests
 from flask import Blueprint, Response, jsonify, request
@@ -38,3 +39,13 @@ def sync():
     payload = {"reports": sorted(_REPORTS), "requested_by": request.headers.get("X-Requested-By", "")}
     resp = requests.post(SYNC_URL, json=payload, timeout=5, verify=False)
     return jsonify({"status": resp.status_code})
+
+
+@reports.route("/search")
+def search():
+    term = request.args.get("q", "")
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE names (name TEXT)")
+    conn.executemany("INSERT INTO names VALUES (?)", [(n,) for n in sorted(_REPORTS)])
+    rows = conn.execute(f"SELECT name FROM names WHERE name LIKE '%{term}%'").fetchall()
+    return jsonify({"results": [r[0] for r in rows]})

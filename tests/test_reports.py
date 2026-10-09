@@ -47,3 +47,12 @@ def test_sync_posts_the_report_list(client, monkeypatch):
     resp = client.post("/reports/sync", headers={"X-Requested-By": "ann"})
     assert resp.status_code == 200 and resp.get_json() == {"status": 202}
     assert calls[0][1]["json"] == {"reports": ["monthly", "weekly"], "requested_by": "ann"}
+
+
+def test_search_finds_reports_by_name(client):
+    resp = client.get("/reports/search?q=week")
+    assert resp.status_code == 200 and resp.get_json() == {"results": ["weekly"]}
+
+
+def test_search_with_no_match_returns_nothing(client):
+    assert client.get("/reports/search?q=zzz").get_json() == {"results": []}
