@@ -1,43 +1,40 @@
-# Copy to .github/workflows/sast-autofix.yml in the repo to protect.
+# Active pipeline 2 of 2: dev branch. See the reference notes in examples/pipelines/README.md on demo7.
 #
-# Flow: a developer pushes branch SV -> this scans the whole repo as it is on
-# SV -> validated fixes are pushed to SV-fix -> PR "SV-fix -> SV" lists every
-# changed line plus suggestions for what couldn't be auto-fixed. The developer
-# merges that into SV, then SV into main as usual.
+# PIPELINE 2 of 2 - DEV branch: STRICT gate before main.
 #
-# Runs on a self-hosted runner on the DGX Spark: Ollama, Laya and Semgrep are
-# local there, and no code or findings leave the machine except the fix PR.
-# Deliberately NOT triggered by pull_request — on a public repo that would let
-# fork PRs execute code on the self-hosted runner.
-name: SAST Autofix
+# dev collects the merged feature work, including any findings pipeline 1
+# tolerated. This pipeline scans dev, fixes what is left on dev-fix and opens
+# a PR into dev. The check on dev passes only when NOTHING confirmed remains:
+# all findings closed, remediated and validated.
+#
+# The rules come from the dashboard policy stage matching dev (Policies page).
+# Make "SAST gate (dev)" a required check on branch protection for main.
+name: SAST Autofix - dev (strict)
 
 on:
   push:
-    branches-ignore:
-      - main        # scan developer branches before they reach main
-    # *-fix branches are scanned too, in check-only mode (see below). The
-    # bot's own push of SV-fix never triggers a run (GitHub doesn't for the
-    # Actions token); that run posts SV-fix's check itself. A developer's
-    # push to SV-fix does trigger one, so hand edits get re-checked.
+    branches:
+      - dev
+      - dev-fix           # runs in check-only mode
   workflow_dispatch:
 
 permissions:
   contents: write        # push the <branch>-fix branch
   pull-requests: write   # open the PR and its inline line comments
-  statuses: write        # post the fix-branch rescan result on SV-fix
+  statuses: write        # post the fix-branch rescan result
 
 concurrency:
-  # One scan per developer branch at a time; a newer push to the same branch
-  # supersedes a scan still running on the old commit.
   group: sast-autofix-${{ github.ref_name }}
   cancel-in-progress: true
 
 jobs:
   autofix:
+    name: SAST gate (dev)
+    # GitHub Environment "dev": holds this stage's variables and rules.
+    environment: dev
     runs-on: [self-hosted, sast-autofix]
     timeout-minutes: 120
     env:
-      # Where sast-autofix-poc (with its venv) lives on the runner machine.
       SAST_AUTOFIX_HOME: ${{ vars.SAST_AUTOFIX_HOME || '/home/rcxdigital/SAST-AUTOFIX-POC/sast-autofix-poc' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -61,17 +58,38 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPO: ${{ github.repository }}
+          # Optional override. Normally empty: the gate rules come from the published
+          # policy in the dashboard (Policies -> Stages), matched on this branch.
+          BLOCK_SEVERITIES: ${{ vars.BLOCK_SEVERITIES }}
         run: |
-          # Fix branches are only checked, never fixed again (no SV-fix-fix).
+          # Fix branches are only checked, never fixed again (no X-fix-fix).
           mode=""
           if [[ "$GITHUB_REF_NAME" == *-fix ]]; then mode="--check-only"; fi
+          # The gate (which severities block, how many may remain) is read from the
+          # dashboard policy for this branch. Fail closed: no policy means strict.
+          gate=()
+          if [ -n "$BLOCK_SEVERITIES" ]; then gate=(--block-severities "$BLOCK_SEVERITIES"); fi
           "$SAST_AUTOFIX_HOME/venv/bin/python" "$SAST_AUTOFIX_HOME/cli.py" \
             --config "$SAST_AUTOFIX_HOME/config.yaml" \
             run --target-repo "$GITHUB_WORKSPACE" \
             --base-branch "$GITHUB_REF_NAME" \
             --report-dir "$RUNNER_TEMP/sast-autofix" \
             --fail-on-findings \
+            "${gate[@]}" \
             $mode
+
+      - name: Record run in the dashboard
+        # Runs even when the merge gate failed the scan step. Non-fatal: a
+        # dashboard problem must never fail a security scan.
+        if: always()
+        continue-on-error: true
+        run: |
+          report="$RUNNER_TEMP/sast-autofix/sast-autofix-report.json"
+          if [ -f "$report" ] && [ -x "$SAST_AUTOFIX_HOME/dashboard/.venv/bin/python" ]; then
+            cd "$SAST_AUTOFIX_HOME" && dashboard/.venv/bin/python -m dashboard.ingest "$report"
+          else
+            echo "No report or no dashboard install; skipping."
+          fi
 
       - name: Upload run report
         if: always()
