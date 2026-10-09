@@ -47,5 +47,16 @@ def search():
     conn = sqlite3.connect(":memory:")
     conn.execute("CREATE TABLE names (name TEXT)")
     conn.executemany("INSERT INTO names VALUES (?)", [(n,) for n in sorted(_REPORTS)])
-    rows = conn.execute(f"SELECT name FROM names WHERE name LIKE '%{term}%'").fetchall()
+    rows = conn.execute("SELECT name FROM names WHERE name LIKE ?", (f"%{term}%",)).fetchall()
     return jsonify({"results": [r[0] for r in rows]})
+
+
+def cache_key(name: str) -> str:
+    return hashlib.md5(name.encode()).hexdigest()
+
+
+@reports.route("/<name>/cache-key")
+def cache_key_for(name):
+    if name not in _REPORTS:
+        return jsonify({"error": "no such report"}), 404
+    return jsonify({"report": name, "cache_key": cache_key(name)})

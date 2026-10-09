@@ -56,3 +56,13 @@ def test_search_finds_reports_by_name(client):
 
 def test_search_with_no_match_returns_nothing(client):
     assert client.get("/reports/search?q=zzz").get_json() == {"results": []}
+
+
+def test_cache_key_is_stable_and_differs_between_reports(client):
+    first = client.get("/reports/weekly/cache-key").get_json()["cache_key"]
+    assert first and client.get("/reports/weekly/cache-key").get_json()["cache_key"] == first
+    assert client.get("/reports/monthly/cache-key").get_json()["cache_key"] != first
+
+
+def test_cache_key_for_an_unknown_report_is_404(client):
+    assert client.get("/reports/nope/cache-key").status_code == 404
