@@ -4,7 +4,10 @@ import threading
 
 from flask import Flask, request, send_from_directory, abort
 
+from reports import reports
+
 app = Flask(__name__)
+app.register_blueprint(reports)
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "users.db")
 UPLOADS_DIR = os.path.join(os.path.dirname(__file__), "uploads")
