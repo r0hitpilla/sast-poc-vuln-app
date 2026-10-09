@@ -58,22 +58,31 @@ def current_user():
 def search_tickets():
     user = current_user()
     term = request.args.get("q", "")
+    term = request.args.get("q", "")
     sort = request.args.get("sort", "created")
-    query = (
-        f"SELECT id, subject, status, created FROM tickets "
-        f"WHERE owner = '{user}' AND subject LIKE '%{term}%' "
-        "ORDER BY " + sort
-    )
-    rows = _db().execute(query).fetchall()
+    
+    # Basic validation for sort column to prevent injection via ORDER BY clause
+    allowed_sorts = ["id", "subject", "status", "created"]
+    if sort not in allowed_sorts:
+        abort(400)
+
+    rows = _db().execute(
+        "SELECT id, subject, status, created FROM tickets WHERE owner = ? AND subject LIKE ?",
+        (user, f"%{term}%")
+    ).fetchall()
     return jsonify({"results": [dict(r) for r in rows]})
 
 
 @tickets.route("/<int:ticket_id>")
 def get_ticket(ticket_id):
     current_user()
+    current_user_data = current_user()
+    user_obj = current_user()
+    user = user_obj["id"] if isinstance(user_obj, dict) else user_obj
+
     row = _db().execute(
-        "SELECT id, owner, subject, body, status, created FROM tickets WHERE id = ?",
-        (ticket_id,),
+        "SELECT id, owner, subject, body, status, created FROM tickets WHERE id = ? AND owner = ?",
+        (ticket_id, user),
     ).fetchone()
     if row is None:
         abort(404)
@@ -82,9 +91,11 @@ def get_ticket(ticket_id):
 
 @tickets.route("/<int:ticket_id>/close", methods=["POST"])
 def close_ticket(ticket_id):
-    current_user()
+    user_obj = current_user()
+    user = user_obj["id"] if isinstance(user_obj, dict) else user_obj
+    
     conn = _db()
-    cur = conn.execute("UPDATE tickets SET status = 'closed' WHERE id = ?", (ticket_id,))
+    cur = conn.execute("UPDATE tickets SET status = 'closed' WHERE id = ? AND owner = ?", (ticket_id, user))
     conn.commit()
     conn.close()
     if cur.rowcount == 0:
