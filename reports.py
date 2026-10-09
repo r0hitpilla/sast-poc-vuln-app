@@ -20,7 +20,7 @@ _REPORTS = {
 
 
 def etag(content: str) -> str:
-    return hashlib.md5(content.encode()).hexdigest()
+    return hashlib.sha256(content.encode()).hexdigest()
 
 
 @reports.route("/<name>")
@@ -36,5 +36,5 @@ def download(name):
 @reports.route("/sync", methods=["POST"])
 def sync():
     payload = {"reports": sorted(_REPORTS), "requested_by": request.headers.get("X-Requested-By", "")}
-    resp = requests.post(SYNC_URL, json=payload, timeout=5, verify=False)
+    resp = requests.post(SYNC_URL, json=payload, timeout=5)
     return jsonify({"status": resp.status_code})
